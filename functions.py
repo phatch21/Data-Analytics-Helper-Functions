@@ -1,11 +1,12 @@
+
 # EDA functions
 def univariate_stats(df, roundto=4):
   import pandas as pd
   import numpy as np
   
   df_results = pd.DataFrame(columns=['dtype','count', 'missing','unique','mode', 
-                                     'min','q1','median','q3','max','mean','std',
-                                     'skew','kurt'])
+                                    'min','q1','median','q3','max','mean','std',
+                                    'skew','kurt'])
   
   for col in df:
     dtype = df[col].dtype
@@ -30,8 +31,8 @@ def univariate_stats(df, roundto=4):
       kurt = df[col].kurt()
       
       df_results.loc[col] = [dtype,count,missing,unique,mode,round(min, roundto),round(q1, roundto),
-                             round(median, roundto),round(q3, roundto),round(max, roundto),
-                             round(mean, roundto),round(std, roundto),round(skew, roundto),round(kurt, roundto)]
+                            round(median, roundto),round(q3, roundto),round(max, roundto),
+                            round(mean, roundto),round(std, roundto),round(skew, roundto),round(kurt, roundto)]
 
     else:
       df_results.loc[col] = [dtype,count,missing,unique,mode,"","",
@@ -69,14 +70,14 @@ def parse_dates(df, features=[]):
 
   for feat in features:
     if feat in df.columns:
-     df[feat] = pd.to_datetime(df[feat])
+      df[feat] = pd.to_datetime(df[feat])
 
-     df[f'{feat}_year'] = df[feat].dt.year
-     df[f'{feat}_month'] = df[feat].dt.month
-     df[f'{feat}_day'] = df[feat].dt.day
-     df[f'{feat}_weekday'] = df[feat].dt.day_name()
+      df[f'{feat}_year'] = df[feat].dt.year
+      df[f'{feat}_month'] = df[feat].dt.month
+      df[f'{feat}_day'] = df[feat].dt.day
+      df[f'{feat}_weekday'] = df[feat].dt.day_name()
 
-     df[f'{feat}_days_since'] = (datetime.today() - df[feat]).dt.days
+      df[f'{feat}_days_since'] = (datetime.today() - df[feat]).dt.days
   else:
       print(f'{feat} not found in DataFrame')
 
@@ -160,3 +161,40 @@ def skew_correct(df, feature, max_power=50, messages=True):
     plt.show()
 
     return df
+
+def missing_drop(df, label="", features=[], messages=True, row_threshold=.9, col_threshold=.5):
+  import pandas as pd
+
+  start_count = df.count().sum()
+
+  # Drop columns that are missing
+  df.dropna(axis=1, thresh=round(col_threshold * df.shape[0]), inplace=True)
+  # Drop all rows that have less data than the proportion that row_threshold requires
+  df.dropna(axis=0, thresh=round(row_threshold * df.shape[1]), inplace=True)
+  if label != "": df.dropna(axis=0, subset=[label], inplace=True)
+
+  def generate_missing_table():
+    df_results = pd.DataFrame(columns=['Missing', 'column', 'rows'])
+    for feat in df:
+      missing = df[feat].isna().sum()
+      if missing > 0:
+        memory_col = df.drop(columns=[feat]).count().sum()
+        memory_rows = df.dropna(subset=[feat]).count().sum()
+        df_results.loc[feat] = [missing, memory_col, memory_rows]
+    return df_results
+
+  df_results = generate_missing_table()
+  while df_results.shape[0] > 0:
+    max = df_results[['column', 'rows']].max(axis=1)[0]
+    max_axis = df_results.columns[df_results.isin([max]).any()][0]
+    print(max, max_axis)
+    df_results.sort_values(by=[max_axis], ascending=False, inplace=True)
+    if messages: print('\n', df_results)
+    if max_axis=='rows':
+      df.dropna(axis=0, subset=[df_results.index[0]], inplace=True)
+    else:
+      df.drop(columns=[df_results.index[0]], inplace=True)
+    df_results = generate_missing_table()
+
+  if messages: print(f'{round(df.count().sum() / start_count * 100, 2)}% ({df.count().sum()}) / ({start_count}) of non-null cells were kept.')
+  return df

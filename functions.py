@@ -1,4 +1,3 @@
-
 # EDA functions
 def univariate_stats(df, roundto=4):
   import pandas as pd
@@ -325,47 +324,75 @@ def numeric_bin(series, full_list=True, theory='all'):
     df = pd.DataFrame(bin_dict)
     return df
     
-def bivariate_stats(df, label, roundto=4):
+def bivariate(df, label, roundto=4):
   import pandas as pd
   from scipy import stats
 
-  output_df = pd.DataFrame(columns=['missing', 'p', 'r', 'y = m(x) + b', 'F', 'X2'])
+  # Create an empty DataFrame to store the results
+  output_df = pd.DataFrame(columns=['missing', 'p', 'r', 'τ', 'ρ', 'y = m(x) + b', 'F', 'X2', 'skew', 'unique', 'values'])
 
+  # Iterate through each feature in the DataFrame
   for feature in df.columns:
     if feature != label:
-      df_temp = df[[feature, label]]
-      df_temp = df_temp.dropna()
-      missing = (df.shape[0] - df_temp.shape[0]) / df.shape[0]
+      df_temp = df[[feature, label]].dropna()  # Remove rows with missing values
+      missing = (df.shape[0] - df_temp.shape[0]) / df.shape[0]  # Calculate missing percentage
+      unique = df_temp[feature].nunique()  # Count unique values
 
+      # Bin categories for categorical variables
+      if not pd.api.types.is_numeric_dtype(df_temp[feature]):
+        df = bin_categories(df, feature)
+
+      # Case 1: Both feature and label are numeric (continuous variables)
       if pd.api.types.is_numeric_dtype(df_temp[feature]) and pd.api.types.is_numeric_dtype(df_temp[label]):
-        m, b, r, p, err = stats.linregress(df_temp[feature], df_temp[label])
-        output_df.loc[feature] = [f'{missing:.2%}', round(p, roundto), round(r, roundto), f'y = {round(m, roundto)}(x) + {round(b, roundto)}', '-', '-']
+        m, b, r, p, err = stats.linregress(df_temp[feature], df_temp[label])  # Perform linear regression
+        tau, tp = stats.kendalltau(df_temp[feature], df_temp[label])  # Kendall correlation
+        rho, rp = stats.spearmanr(df_temp[feature], df_temp[label])  # Spearman correlation
 
+        # Store results in the output DataFrame
+        output_df.loc[feature] = [
+            f'{missing:.2%}', round(p, roundto), round(r, roundto), round(tau, roundto),
+            round(rho, roundto), f'y = {round(m, roundto)}(x) + {round(b, roundto)}', '-', '-',
+            df_temp[feature].skew(), unique, '-']
+
+        scatterplot(df_temp, feature, label, roundto)  # Generate a scatterplot for visualization
+
+      # Case 2: Both feature and label are categorical (nominal variables)
       elif not pd.api.types.is_numeric_dtype(df_temp[feature]) and not pd.api.types.is_numeric_dtype(df_temp[label]):
-        contingency_table = pd.crosstab(df_temp[feature], df_temp[label]) # Calculate the crosstab
-        X2, p, dof, expected = stats.chi2_contingency(contingency_table)  # Calculate the Chi-square based on the crosstab
-        output_df.loc[feature] = [f'{missing:.2%}', round(p, roundto), '-', '-', '-', round(X2, roundto)]
+        contingency_table = pd.crosstab(df_temp[feature], df_temp[label])  # Create contingency table
+        X2, p, dof, expected = stats.chi2_contingency(contingency_table)  # Perform Chi-square test
 
+        # Store results in the output DataFrame
+        output_df.loc[feature] = [f'{missing:.2%}', round(p, roundto), '-', '-', '-', '-', '-', round(X2, roundto), '-', unique, df_temp[feature].unique()]
+
+        crosstab(df_temp, feature, label, roundto)  # Generate a heatmap visualization
+
+      # Case 3: One variable is numeric, and the other is categorical (ANOVA test)
       else:
         if pd.api.types.is_numeric_dtype(df_temp[feature]):
+          skew = df_temp[feature].skew()  # Calculate skewness
           num = feature
           cat = label
         else:
+          skew = '-'
           num = label
           cat = feature
 
+        # Prepare data for ANOVA test
         groups = df_temp[cat].unique()
-        group_lists = []
-        for g in groups:
-          g_list = df_temp[df_temp[cat] == g][num]
-          group_lists.append(g_list)
+        group_lists = [df_temp[df_temp[cat] == g][num] for g in groups]  # List of groups
 
-        results = stats.f_oneway(*group_lists)
-        F = results[0]
-        p = results[1]
-        output_df.loc[feature] = [f'{missing:.2%}', round(p, roundto), '-', '-', round(F, roundto), '-']
-  return output_df.sort_values(by=['p'])
+        results = stats.f_oneway(*group_lists)  # Perform one-way ANOVA test
+        F = results[0]  # Extract F-statistic
+        p = results[1]  # Extract p-value
 
+        # Store results in the output DataFrame
+        output_df.loc[feature] = [
+            f'{missing:.2%}', round(p, roundto), '-', '-', '-', '-', round(F, roundto), '-', skew,
+            unique, df_temp[cat].unique()]
+
+        bar_chart(df_temp, cat, num, roundto)  # Generate a bar chart for visualization
+
+  return output_df.sort_values(by=['p'])  # Return results sorted by p-value
 
 def scatterplot(df, feature, label, roundto=3, linecolor='darkorange'):
   import pandas as pd
@@ -373,22 +400,24 @@ def scatterplot(df, feature, label, roundto=3, linecolor='darkorange'):
   import seaborn as sns
   from scipy import stats
 
-  # Create the plot
+  # Create a scatter plot with a regression line
   sns.regplot(x=df[feature], y=df[label], line_kws={"color": linecolor})
 
-  # Calculate the regression line so that we can print the text
+  # Perform linear regression to calculate regression statistics
   m, b, r, p, err = stats.linregress(df[feature], df[label])
 
-  # Add all descriptive statistics to the diagram
+  # Format the regression equation and statistics into a text string
   textstr  = 'Regression line:' + '\n'
   textstr += 'y  = ' + str(round(m, roundto)) + 'x + ' + str(round(b, roundto)) + '\n'
-  textstr += 'r   = ' + str(round(r, roundto)) + '\n'
-  textstr += 'r2 = ' + str(round(r**2, roundto)) + '\n'
-  textstr += 'p  = ' + str(round(p, roundto)) + '\n\n'
+  textstr += 'r   = ' + str(round(r, roundto)) + '\n'  # Pearson correlation coefficient
+  textstr += 'r²  = ' + str(round(r**2, roundto)) + '\n'  # Coefficient of determination (R-squared)
+  textstr += 'p  = ' + str(round(p, roundto)) + '\n\n'  # P-value indicating significance
 
+  # Display the regression statistics on the plot
   plt.text(1, 0.1, textstr, fontsize=12, transform=plt.gcf().transFigure)
-  plt.show()
 
+  # Show the plot
+  plt.show()
 
 def bar_chart(df, feature, label, roundto=3):
   import pandas as pd
@@ -396,62 +425,67 @@ def bar_chart(df, feature, label, roundto=3):
   from matplotlib import pyplot as plt
   import seaborn as sns
 
-  # Handle missing data
-  df_temp = df[[feature, label]]
-  df_temp = df_temp.dropna()
+  # Handle missing data: Remove rows where either feature or label has missing values
+  df_temp = df[[feature, label]].dropna()
 
+  # Create a bar chart displaying the mean of the label for each category in the feature
   sns.barplot(df_temp, x=feature, y=label)
 
-  # Create the label lists needed to calculate oneway-ANOVA F
-  groups = df_temp[feature].unique()
+  # Perform one-way ANOVA (F-test) to check if there is a statistically significant difference
+  groups = df_temp[feature].unique()  # Get unique categories of the feature
   group_lists = []
+
+  # Create a list of values for each group
   for g in groups:
     g_list = df_temp[df_temp[feature] == g][label]
     group_lists.append(g_list)
 
-  results = stats.f_oneway(*group_lists)
-  F = results[0]
-  p = results[1]
+  results = stats.f_oneway(*group_lists)  # Conduct ANOVA test
+  F = results[0]  # Extract the F-statistic
+  p = results[1]  # Extract the p-value
 
-  # Next, calculate t-tests with Bonferroni correction for p-value threshold
-  ttests = []
-  for i1, g1 in enumerate(groups): # Use the enumerate() function to add an index for counting to a list of values
-    # For each item, loop through a second list of each item to compare each pair
+  # Conduct pairwise t-tests with Bonferroni correction
+  ttests = []  # Store significant t-test results
+  for i1, g1 in enumerate(groups):
     for i2, g2 in enumerate(groups):
-      if i2 > i1: # If the inner_index is greater that the outer_index, then go ahead and run a t-test
+      if i2 > i1:  # Compare each unique pair once
         type_1 = df_temp[df_temp[feature] == g1]
         type_2 = df_temp[df_temp[feature] == g2]
-        t, p = stats.ttest_ind(type_1[label], type_2[label])
+        t, p = stats.ttest_ind(type_1[label], type_2[label])  # Perform independent t-test
 
-        # Add each t-test result to a list of t, p pairs
+        # Store the results
         ttests.append([str(g1) + ' - ' + str(g2), round(t, roundto), round(p, roundto)])
 
-  p_threshold = 0.05 / len(ttests) # Bonferroni-corrected p-value determined
+  # Compute Bonferroni-corrected p-value threshold
+  p_threshold = 0.05 / len(ttests)
 
-  # Add all descriptive statistics to the diagram
+  # Create annotation text for the plot
   textstr  = '   ANOVA' + '\n'
   textstr += 'F: ' + str(round(F, roundto)) + '\n'
   textstr += 'p: ' + str(round(p, roundto)) + '\n\n'
 
-  # Only include the significant t-tests in the printed results for brevity
+  # Add only significant t-test results
   for ttest in ttests:
-    if ttest[2] <= p_threshold:
-      if 'Sig. comparisons (Bonferroni-corrected)' not in textstr: # Only include the header if there is at least one significant result
+    if ttest[2] <= p_threshold:  # If p-value is below Bonferroni threshold
+      if 'Sig. comparisons (Bonferroni-corrected)' not in textstr:
         textstr += 'Sig. comparisons (Bonferroni-corrected)' + '\n'
       textstr += str(ttest[0]) + ": t=" + str(ttest[1]) + ", p=" + str(ttest[2]) + '\n'
 
+  # Display statistical results as text on the chart
   plt.text(1, 0.1, textstr, fontsize=12, transform=plt.gcf().transFigure)
+
+  # Show the plot
   plt.show()
 
 def bin_categories(df, feature, cutoff=0.05, replace_with='Other'):
-        # create a list of feature values that are below the cutoff percentage
-        other_list = df[feature].value_counts()[df[feature].value_counts() / len(df) < cutoff].index
-        
-        # Replace the value of any country in that list (using the .isin() method) with 'Other'
-        df.loc[df[feature].isin(other_list), feature] = replace_with
-        
-        return df
-  
+  # create a list of feature values that are below the cutoff percentage
+  other_list = df[feature].value_counts()[df[feature].value_counts() / len(df) < cutoff].index
+
+  # Replace the value of any country in that list (using the .isin() method) with 'Other'
+  df.loc[df[feature].isin(other_list), feature] = replace_with
+
+  return df
+
 def crosstab(df, feature, label, roundto=3):
   import pandas as pd
   from scipy.stats import chi2_contingency
@@ -459,24 +493,31 @@ def crosstab(df, feature, label, roundto=3):
   import seaborn as sns
   import numpy as np
 
-  # Handle missing data
-  df_temp = df[[feature, label]]
-  df_temp = df_temp.dropna()
+  # Handle missing data: Remove rows where either feature or label has missing values
+  df_temp = df[[feature, label]].dropna()
 
-  # Bin categories
+  # Bin categories if needed (consolidate rare categories into "Other")
   df_temp = bin_categories(df_temp, feature)
 
-  # Generate the crosstab table required for X2
+  # Generate the contingency table (crosstab)
   crosstab = pd.crosstab(df_temp[feature], df_temp[label])
 
-  # Calculate X2 and p-value
+  # Perform Chi-square test of independence
   X, p, dof, contingency_table = chi2_contingency(crosstab)
 
-  textstr  = 'X2: ' + str(round(X, 4))+ '\n'
-  textstr += 'p = ' + str(round(p, 4)) + '\n'
-  textstr += 'dof  = ' + str(dof)
+  # Format the test results into a text string
+  textstr  = 'X²: ' + str(round(X, roundto)) + '\n'
+  textstr += 'p = ' + str(round(p, roundto)) + '\n'
+  textstr += 'dof = ' + str(dof)
+
+  # Display the test results on the plot
   plt.text(0.9, 0.1, textstr, fontsize=12, transform=plt.gcf().transFigure)
 
+  # Convert expected frequencies to a DataFrame with rounded integer values
   ct_df = pd.DataFrame(np.rint(contingency_table).astype('int64'), columns=crosstab.columns, index=crosstab.index)
+
+  # Create a heatmap visualization of the contingency table
   sns.heatmap(ct_df, annot=True, fmt='d', cmap='coolwarm')
+
+  # Show the heatmap
   plt.show()

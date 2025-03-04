@@ -539,12 +539,20 @@ def bar_chart(df, feature, label, roundto=3):
   # Show the plot
   plt.show()
 
-def bin_categories(df, feature, cutoff=0.05, replace_with='Other'):
-  # create a list of feature values that are below the cutoff percentage
-  other_list = df[feature].value_counts()[df[feature].value_counts() / len(df) < cutoff].index
+def bin_groups(df, features=[], cutoff=0.05, replace_with='Other', messages=True):
+  import pandas as pd
 
-  # Replace the value of any country in that list (using the .isin() method) with 'Other'
-  df.loc[df[feature].isin(other_list), feature] = replace_with
+  if len(features) == 0: features = df.columns # If no features are specified, bin all features
+
+  for feat in features:
+    if feat in df.columns:  # Make sure they don't accidentally enter a feature name that doesn't exist
+      if not pd.api.types.is_numeric_dtype(df[feat]):
+        other_list = df[feat].value_counts()[df[feat].value_counts() / df.shape[0] < cutoff].index
+        if len(other_list) > 0:
+          df.loc[df[feat].isin(other_list), feat] = replace_with
+          if messages and len(other_list) > 0: print(f'{feat} has been binned by setting {other_list} to {replace_with}')
+    else:
+      if messages: print(f'{feat} not found in the DataFrame provided. No binning performed')
 
   return df
 

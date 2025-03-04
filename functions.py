@@ -1,3 +1,65 @@
+def univariate(df, sample=500):
+  import seaborn as sns
+  import matplotlib.pyplot as plt
+  import math
+
+  df_results = pd.DataFrame(columns=['bin_groups', 'type', 'missing', 'unique', 'min',
+                                      'median', 'max', 'mode', 'mean', 'std', 'skew'])
+
+  for col in df:
+    # Features that apply to all dtypes
+    dtype = df[col].dtype
+    missing = df[col].isna().sum()
+    unique = df[col].nunique()
+    mode = df[col].mode()[0]
+    if pd.api.types.is_numeric_dtype(df[col]):
+      # Features for numeric dtypes only
+      min = df[col].min()
+      max = df[col].max()
+      mean = df[col].mean()
+      median = df[col].median()
+      std = df[col].std()
+      skew = df[col].skew()
+      df_results.loc[col] = ['-', dtype, missing, unique, min, median, max, mode,
+                            round(mean, 2), round(std, 2), round(skew, 2)]
+    else:
+      # Features for object dtypes only
+      flag = df[col].value_counts()[(df[col].value_counts() / df.shape[0]) < 0.05].shape[0]
+      df_results.loc[col] = [flag, dtype, missing, unique, '-', '-', '-', mode, '-', '-', '-']
+
+  # Make a sub-DataFrame of features that are objects or have only two values; they will need countplots
+  countplots = df_results[(df_results['type']=='object') | (df_results['unique']==2)]
+  # Make a sub-DataFrame of features that are floats or ints with many values which will need histograms
+  histograms = df_results[(df_results['type']=='float64') | ((df_results['unique']>10) & (df_results['type']=='int64'))]
+  histograms = histograms[histograms['unique']>2] # Remove those that are binary
+
+  # Create a set of countplots for the categorical features
+  f, ax = plt.subplots(1, countplots.shape[0], figsize=[countplots.shape[0] * 1.5, 1.5])
+  for i, col in enumerate(countplots.index):
+    g = sns.countplot(data=df, x=col, color='g', ax=ax[i]);
+    g.set_yticklabels('')
+    g.set_ylabel('')
+    ax[i].tick_params(labelrotation=90, left=False)
+    ax[i].xaxis.set_label_position('top')
+    sns.despine(left=True, top=True, right=True)
+
+  plt.subplots_adjust(hspace=2, wspace=.5)
+  plt.show()
+
+  # Create a set of histograms for the numeric features
+  f, ax = plt.subplots(1, histograms.shape[0], figsize=[histograms.shape[0] * 1.5, 1.5])
+  for i, col in enumerate(histograms.index):
+    g = sns.histplot(data=df.sample(n=sample, random_state=1), x=col, color='b', ax=ax[i], kde=True);
+    g.set_yticklabels(labels=[])
+    g.set_ylabel('')
+    ax[i].tick_params(left=False)
+    sns.despine(left=True, top=True, right=True)
+
+  plt.subplots_adjust(hspace=2, wspace=.5)
+  plt.show()
+
+  return df_results
+
 # EDA functions
 def univariate_stats(df, roundto=4):
   import pandas as pd

@@ -45,11 +45,11 @@ print(univariate_results)
 - [ ] Improve Visualization Capabilities
 - [ ] Provide More Statistical Insights
 
+## Acknowledgments
+The core functions in this project were developed by Professor Mark Keith of BYU. This repository adapts and extends his work for educational and practical data analysis purposes.
+
 ## Contributing
 Contributions are welcome! Feel free to submit issues or pull requests.
-
-## License
-This project is licensed under the MIT License.
 
 ## Contact
 For questions or suggestions, reach out via [GitHub Issues](https://github.com/yourusername/Data-Analytics-Helper-Functions/issues).
